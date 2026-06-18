@@ -1,9 +1,12 @@
-# techmatch/config.py
-
 from __future__ import annotations
+import os
 
 from techmatch.exceptions import ConfigError
 
+# dataset
+
+CSV_PATH: str = os.path.join(os.path.dirname(os.path.dirname(__file__)),"raw_skills.csv")
+CSV_CORPUS_SIZE: int = 421
 
 # Recommendation Engine
 
@@ -27,22 +30,17 @@ OOV_IDF_DEFAULT: float = 1.0
 
 COLD_START_THRESHOLD: float = 1e-9
 # Cold Start condition. Accounts for floating-point rounding.
-
-
 SCORE_HIGH_THRESHOLD: float = 0.70
-
 SCORE_MID_THRESHOLD: float = 0.40
 
 
 # UI / Display
 
 SCORE_BAR_WIDTH: int = 30
-
 MAX_GAP_TAGS_SHOWN: int = 6
 
 SPINNER_FRAME_DELAY: float = 0.07
 # Seconds between spinner animation frames.
-
 PIPELINE_STEP_DELAYS: dict[str, float] = {
     "ingestion": 0.7,
     "idf":       0.8,
@@ -51,22 +49,19 @@ PIPELINE_STEP_DELAYS: dict[str, float] = {
     "sorting":   0.5,
     "filtering": 0.4,
 }
-# Simulated processing durations for each steps in seconds
 
 TABLE_COL_WIDTH: int = 25
-
 
 # metadata
 
 APP_NAME:    str = "TechMatch"
-APP_VERSION: str = "1.0.0"
+APP_VERSION: str = "3.0.0"
 APP_TAGLINE: str = "AI Tech Stack Recommender"
 APP_AUTHOR:  str = "Muhammad Ayas"
 APP_BATCH:   str = "2026"
 APP_PROJECT: str = "AI Recommendation Logic"
 
-
-# ── Validation ───────────────────────────────────────────────────────────────
+# Validation 
 
 def validate() -> None:
   
@@ -87,6 +82,8 @@ def validate() -> None:
          "SCORE_MID_THRESHOLD", f"Must be less than SCORE_HIGH_THRESHOLD ({SCORE_HIGH_THRESHOLD})."),
         (isinstance(SCORE_BAR_WIDTH, int) and SCORE_BAR_WIDTH >= 10,
          "SCORE_BAR_WIDTH", "Must be an integer >= 10."),
+        (os.path.isfile(CSV_PATH),
+         "CSV_PATH", f"raw_skills.csv not found at: {CSV_PATH}"),
     ]
 
     for condition, key, detail in checks:

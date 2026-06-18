@@ -92,7 +92,7 @@ def _get_user_skills() -> list[str]:
         if raw.lower() in ("q", "quit", "exit"):
             _graceful_exit()
 
-        # Empty → submit
+        # Empty → try to submit
         if raw == "":
             try:
                 _validate_submission(selected)
@@ -172,9 +172,9 @@ def _run_pipeline(selected_skills: list[str]) -> dict:
     ui.blank()
 
     ui.print_pipeline(2)
-    ui.spinner("Computing IDF weights across 12-role corpus…", delays["idf"])
-    ui.spinner("Building TF-IDF vectors for user + all roles…", delays["tfidf"])
-    ui.spinner("Calculating cosine similarity for 12 roles…",   delays["scoring"])
+    ui.spinner("Computing IDF weights across 421-posting CSV corpus…", delays["idf"])
+    ui.spinner("Building TF-IDF vectors for user + all role clusters…", delays["tfidf"])
+    ui.spinner(f"Calculating cosine similarity for {len(JOB_CORPUS)} role clusters…", delays["scoring"])
     ui.blank()
 
     ui.print_pipeline(3)
