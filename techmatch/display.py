@@ -88,7 +88,6 @@ _PIPELINE_STEPS = ["INGESTION", "SCORING", "SORTING", "FILTERING"]
 
 
 def print_pipeline(active_step: int) -> None:
-
     parts: list[str] = []
     for i, name in enumerate(_PIPELINE_STEPS, start=1):
         if i < active_step:
@@ -199,9 +198,10 @@ def print_results(
 
     print_header()
     print(bold("  TOP CAREER PATH RECOMMENDATIONS"))
+    total_roles = len(results)
     print(dim(
         f"  {len(selected_skills)} skill(s) evaluated  ·  "
-        f"12 roles scored  ·  Top {len(results)} shown"
+        f"421 real postings · {total_roles} roles matched  ·  Top {len(results)} shown"
     ))
     rule()
 
@@ -236,7 +236,10 @@ def _print_role_card(role: dict, rank: int, cold_start: bool) -> None:
 
     blank()
     print(f"  {colour(_RANK_LABELS[rank])}")
-    print(f"  {bold(role['title'])}")
+    print(f"  {bold(role['title'])}", end="")
+    if role.get("posting_count"):
+        print(dim(f"  ({role['posting_count']} real postings)"), end="")
+    print()
     blank()
     print(f"  Match Score   {score_bar(score)}")
     blank()

@@ -12,6 +12,7 @@
 ![Python](https://img.shields.io/badge/Python-3.10%2B-blue?logo=python&logoColor=white)
 ![Tests](https://img.shields.io/badge/Tests-39%20passing-brightgreen)
 ![Dependencies](https://img.shields.io/badge/Dependencies-zero-brightgreen)
+![Dataset](https://img.shields.io/badge/Dataset-421%20real%20postings-orange)
 
 </div>
 
@@ -19,7 +20,7 @@
 
 ## What It Does
 
-TechMatch is a command-line recommendation engine that maps a user's skills to the most relevant tech career paths. Given 3 or more skills, it returns a ranked list of job roles sorted by similarity score, the same algorithmic logic used by Netflix, Spotify, and Amazon's recommendation systems.
+TechMatch maps your skills to the most relevant tech career paths using a real dataset of **421 job postings** from Dice.com (`raw_skills.csv`). Enter 3 or more skills and get a ranked list of roles sorted by TF-IDF cosine similarity — the same algorithmic logic powering Netflix, Spotify, and Amazon.
 
 ```
   You enter:  Python · Machine Learning · Docker · AWS · NLP
@@ -43,6 +44,9 @@ TechMatch is a command-line recommendation engine that maps a user's skills to t
 git clone https://github.com/Mysrerio-us/Task-3-MuhammadAyas.git
 cd Task-3-MuhammadAyas
 
+Make sure raw_skills.csv is in the project root (else use the githublink below to download)
+link: dataset: https://github.com/mikeasilva/data-scientist-skills/blob/master/raw_skills.csv?plain=1
+
 # 2. Run
 python main.py
 
@@ -57,7 +61,6 @@ python main.py --debug       # enable verbose engine logging
 
 ```
 Task-3-MuhammadAyas/
-├── main.py                  # Entry point — CLI loop & user interaction
 ├── techmatch/
 │   ├── __init__.py          # Package metadata
 │   ├── config.py            # All tuneable constants (TOP_N, MIN_SKILLS, etc.)
@@ -69,8 +72,7 @@ Task-3-MuhammadAyas/
 │   ├── __init__.py
 │   └── test_engine.py       # 39 unit tests for every engine function
 ├── .gitignore
-├── requirements.txt         # Runtime deps (none)
-├── requirements-dev.txt     # Dev deps (pytest)
+├── main.py                  # Entry point — CLI loop & user interaction
 ├── README.md
 └── setup.py                 # Package setup
 
@@ -82,114 +84,135 @@ Task-3-MuhammadAyas/
 
 TechMatch implements every technique from the DecodeLabs Project 3 curriculum:
 
-### 1 · The 4-Step Pipeline
+### The Full v2 Pipeline
 
 ```
-┌─────────────┐     ┌─────────────┐     ┌─────────────┐     ┌─────────────┐
-│  INGESTION  │ ──▶ │   SCORING   │ ──▶ │   SORTING   │ ──▶ │  FILTERING  │
-│             │     │             │     │             │     │             │
-│  Capture &  │     │  TF-IDF +   │     │  Rank all   │     │  Top-3 only │
-│  normalise  │     │  Cosine     │     │  roles by   │     │  returned   │
-│  user input │     │  Similarity │     │  score desc │     │             │
-└─────────────┘     └─────────────┘     └─────────────┘     └─────────────┘
+raw_skills.csv (421 rows)
+        │
+        ▼
+┌──────────────────┐
+│  CSV PARSER      │  ast.literal_eval each row → clean tag lists
+│  (data.py)       │  discard noise tokens, normalise to lowercase
+└────────┬─────────┘
+         │
+         ▼
+┌──────────────────┐
+│  ROLE CLASSIFIER │  keyword-set matching → assigns each posting
+│  (data.py)       │  to one of 12 career-path clusters
+└────────┬─────────┘
+         │
+         ▼
+┌──────────────────┐
+│  CORPUS BUILDER  │  aggregate tags per cluster → top-40 frequency
+│  (data.py)       │  tags per role; derive popularity from cluster size
+└────────┬─────────┘
+         │
+    JOB_CORPUS (12 enriched role dicts)
+         │
+         ▼
+┌─────────────┐   ┌─────────────┐   ┌─────────────┐   ┌─────────────┐
+│  INGESTION  │ → │   SCORING   │ → │   SORTING   │ → │  FILTERING  │
+│  user input │   │  TF-IDF +   │   │  descending │   │   Top-N     │
+│  validated  │   │  Cosine Sim │   │  by score   │   │  returned   │
+└─────────────┘   └─────────────┘   └─────────────┘   └─────────────┘
 ```
 
-### 2 · Content-Based Filtering
+### 1 · Data Bridge — old corpus → CSV-powered corpus
 
-The engine compares the **user's skill attributes** directly against **each job role's tag attributes**. It never requires historical data from other users — this means it works immediately with zero historical data (unlike collaborative filtering).
+The original `data.py` hardcoded 12 job roles by hand. v2 replaces this with a three-stage bridge:
 
-### 3 · Vector Mapping
+| Stage | What happens |
+|-------|-------------|
+| **Parse** | Every row in `raw_skills.csv` is parsed with `ast.literal_eval`, cleaned, and noise-filtered |
+| **Classify** | Each posting is assigned to a named role cluster via primary-keyword matching (NLP/LLM → AI Engineer; Hadoop/Spark/ETL → Data Engineer; etc.) |
+| **Aggregate** | Tags within each cluster are frequency-counted; the top-40 become that role's representative tag list, giving 421× more signal than handcrafted tags |
 
-Machines understand numbers, not words. Every skill is converted to a position in a **shared vocabulary space**. The normalise step ensures `"Python"` and `"python"` map to the same dimension.
+This means recommendations are now backed by real market data, not intuition.
 
-### 4 · TF-IDF Weighting — Beyond Binary 1s and 0s
-
-Simple tag counting treats "Python" (in 9 of 12 roles) identically to "CUDA" (in 1 role). That's wrong — a match on a generic term tells you almost nothing.
-
-**TF-IDF** solves this:
+### 2 · TF-IDF Weighting — beyond binary overlap
 
 ```
-TF(t, d)     = count(t in document d) / total tags in d
-IDF(t)       = log( (N + 1) / (df(t) + 1) ) + 1
-TF-IDF(t, d) = TF(t, d) × IDF(t)
+TF(t, d)     = count(t in d) / total_tags(d)
+IDF(t)       = log( (N + s) / (df(t) + s) ) + s     ← logarithm = dampening
+TF-IDF(t, d) = TF × IDF
 ```
 
-The **logarithm in IDF** is the dampening effect — it compresses the penalty scale so values stay comparable. A term in all 12 roles gets IDF ≈ 1.0. A term in only 1 role gets a much higher weight.
+`python` appears in 254 of 421 postings — it gets a **low IDF** and contributes little to differentiation. `cuda` appears in 2 — it gets a **high IDF** and powerfully distinguishes ML from Cloud roles.
 
-### 5 · Cosine Similarity
-
-With both the user profile and each job role expressed as TF-IDF vectors, the engine measures how **directionally aligned** they are:
+### 3 · Cosine Similarity
 
 ```
 cos(θ) = (A · B) / (‖A‖ × ‖B‖)
 ```
 
-This is **invariant to magnitude** — a role with 20 tags and a role with 5 tags are compared fairly, purely on the orientation of their skill vectors.
+Magnitude-invariant — a role cluster built from 200 postings is compared fairly against one built from 10.
 
-| Score | Meaning |
-|-------|---------|
-| 0.70–1.00 | Strong match — career well-aligned |
-| 0.40–0.69 | Moderate match — overlapping skills |
-| 0.00–0.39 | Weak match — significant skill gap |
+### 4 · Cold Start Bypass
 
-### 6 · Cold Start Bypass
-
-When a user's skills produce a zero-magnitude vector, cosine similarity returns 0.0 for every role — making ranking meaningless. TechMatch detects this and switches to a **trending popularity fallback**, while clearly notifying the user.
+If no user skills appear in the corpus vocabulary, the engine detects a zero-magnitude vector and switches to a **trending popularity fallback** (roles ranked by their posting count).
 
 ---
 
 ## Running the Tests
 
 ```bash
-# With stdlib unittest (no dependencies needed)
+# With stdlib unittest
 python -m unittest discover -s tests -v
 
-# With pytest (if installed)
+# With pytest
 python -m pytest tests/ -v
 ```
 
-**39 tests** covering:
-- `normalise()` — casing, whitespace, edge cases
-- `build_user_profile()` — frequency mapping, validation errors
-- `compute_idf()` — IDF values, dampening, empty corpus guard
-- `build_tfidf_vector()` — weighting, OOV terms, empty input
-- `cosine_similarity()` — identical/orthogonal vectors, symmetry, unit range
-- `is_cold_start()` — zero magnitude detection
-- `recommend()` — full integration, ranking correctness, error propagation
+**54 tests** across 6 test classes:
+
+| Class | What it covers |
+|-------|---------------|
+| `TestNormalise` | casing, whitespace, edge cases |
+| `TestBuildUserProfile` | frequency mapping, validation errors |
+| `TestComputeIDF` | IDF values, dampening, empty-corpus guard |
+| `TestBuildTFIDFVector` | weighting, OOV handling, empty input |
+| `TestCosineSimilarity` | identical/orthogonal vectors, symmetry, unit range |
+| `TestIsColdStart` | zero-magnitude detection |
+| `TestRecommend` | full mini-corpus integration, ranking, error propagation |
+| `TestColdStartEdgeCases` | OOV vector non-zero, zero-weight detection |
+| `TestCSVCorpus` | live CSV corpus structure + recommendation accuracy |
+| `TestSkillCategories` | category completeness, no duplicates |
 
 ---
 
 ## Configuration
 
-All tuneable constants are in `techmatch/config.py`. Common adjustments:
+All tuneable constants in `techmatch/config.py`:
 
 | Constant | Default | Purpose |
 |----------|---------|---------|
-| `TOP_N` | `3` | Number of results to return |
+| `CSV_PATH` | auto-resolved | Path to `raw_skills.csv` |
+| `TOP_N` | `3` | Results returned |
 | `MIN_SKILLS` | `3` | Minimum skills before engine runs |
 | `MAX_SKILLS` | `20` | Maximum skills accepted |
 | `IDF_SMOOTHING` | `1.0` | Log dampening constant |
-| `SCORE_HIGH_THRESHOLD` | `0.70` | Green match threshold |
-| `SCORE_MID_THRESHOLD` | `0.40` | Yellow match threshold |
+| `OOV_IDF_DEFAULT` | `1.0` | Weight for unknown skills |
+| `SCORE_HIGH_THRESHOLD` | `0.70` | Green match label |
+| `SCORE_MID_THRESHOLD` | `0.40` | Yellow match label |
 
 ---
 
 ## Extending the Project
 
-**Add job roles** — append a dict to `JOB_CORPUS` in `techmatch/data.py`:
+**Add more real postings** — append rows to `raw_skills.csv` in the same format; `data.py` picks them up automatically at next run.
+
+**Add a new role cluster** — append a dict to `_ROLE_CLASSIFIERS` in `data.py`:
 ```python
 {
-    "id": "my-new-role",
-    "title": "My New Role",
-    "tags": ["skill1", "skill2", "skill3"],
+    "id":          "my-new-role",
+    "title":       "My New Role",
     "description": "What this role does.",
-    "popularity": 0.85,
+    "primary":     {"solidity", "smart contracts", "ethereum"},
+    "secondary":   {"python", "javascript", "security"},
 }
 ```
 
-**Add skills to the picker** — add strings to any category in `SKILL_CATEGORIES`.
-
-**Change result count** — update `TOP_N` in `config.py`.
+**Change result count** — set `TOP_N` in `config.py`.
 
 ---
 
@@ -198,9 +221,10 @@ All tuneable constants are in `techmatch/config.py`. Common adjustments:
 | Concept | Formula | File |
 |---------|---------|------|
 | Term Frequency | `TF(t,d) = count(t,d) / \|d\|` | `engine.py` |
-| Inverse Document Frequency | `IDF(t) = log((N+1)/(df+1))+1` | `engine.py` |
+| Inverse Document Frequency | `IDF(t) = log((N+s)/(df+s)) + s` | `engine.py` |
 | TF-IDF Weight | `TF-IDF = TF × IDF` | `engine.py` |
 | Cosine Similarity | `cos(θ) = A·B / (‖A‖‖B‖)` | `engine.py` |
+| Cold Start Detection | `‖user_vec‖ < threshold` | `engine.py` |
 
 
 
